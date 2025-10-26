@@ -1,0 +1,434 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>GitHub Issues 掲示板ログ</title>
+  <meta name="description" content="GitHub Issues を掲示板ログとして利用するためのビュー">
+  <meta name="color-scheme" content="light dark">
+  <style>
+    :root {
+      color-scheme: light dark;
+      font-size: 16px;
+      --surface: rgba(255, 255, 255, 0.8);
+      --surface-dark: rgba(20, 20, 20, 0.75);
+      --border-color: rgba(0, 0, 0, 0.08);
+      --border-color-dark: rgba(255, 255, 255, 0.12);
+      --accent: #2563eb;
+      --accent-dark: #60a5fa;
+      --text-muted: rgba(0, 0, 0, 0.55);
+      --text-muted-dark: rgba(255, 255, 255, 0.6);
+      --shadow: 0 12px 32px rgba(0, 0, 0, 0.12);
+    }
+
+    @media (prefers-color-scheme: dark) {
+      body {
+        background: radial-gradient(circle at top, rgba(59, 130, 246, 0.25), #050505 65%);
+        color: #e5e7eb;
+      }
+      .card {
+        background: var(--surface-dark);
+        border-color: var(--border-color-dark);
+        box-shadow: none;
+      }
+      .issue {
+        background: rgba(17, 24, 39, 0.82);
+        border-color: rgba(148, 163, 184, 0.3);
+      }
+      .issue:hover {
+        border-color: rgba(96, 165, 250, 0.5);
+      }
+      .issue-body {
+        color: #e2e8f0;
+      }
+      .label {
+        background: rgba(96, 165, 250, 0.2);
+        color: #dbeafe;
+      }
+      .cta-button {
+        background: rgba(96, 165, 250, 0.18);
+        border-color: rgba(96, 165, 250, 0.4);
+        color: var(--accent-dark);
+      }
+      .cta-button:hover,
+      .cta-button:focus {
+        background: rgba(96, 165, 250, 0.3);
+      }
+      .issue-meta {
+        color: var(--text-muted-dark);
+      }
+    }
+
+    body {
+      margin: 0;
+      font-family: "Segoe UI", "Hiragino Sans", "Hiragino Kaku Gothic ProN", Meiryo, sans-serif;
+      background: radial-gradient(circle at top, rgba(37, 99, 235, 0.1), #f1f5f9 65%);
+      color: #111827;
+      min-height: 100vh;
+      display: flex;
+      justify-content: center;
+      padding: 24px clamp(12px, 5vw, 40px) 48px;
+      box-sizing: border-box;
+    }
+
+    main {
+      width: min(960px, 100%);
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+
+    header {
+      text-align: center;
+    }
+
+    h1 {
+      font-size: clamp(1.75rem, 4vw, 2.2rem);
+      margin: 0 0 0.75rem;
+    }
+
+    p {
+      margin: 0;
+    }
+
+    .card {
+      background: var(--surface);
+      backdrop-filter: blur(8px);
+      border: 1px solid var(--border-color);
+      border-radius: 18px;
+      padding: clamp(20px, 5vw, 28px);
+      box-shadow: var(--shadow);
+      transition: transform 160ms ease, box-shadow 160ms ease;
+    }
+
+    .card:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 20px 40px rgba(37, 99, 235, 0.18);
+    }
+
+    .card header {
+      text-align: left;
+    }
+
+    .actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      align-items: center;
+      justify-content: center;
+      margin-top: 16px;
+    }
+
+    .cta-button {
+      border-radius: 999px;
+      border: 1px solid rgba(37, 99, 235, 0.35);
+      background: rgba(37, 99, 235, 0.12);
+      color: var(--accent);
+      padding: 10px 22px;
+      font-size: 0.95rem;
+      font-weight: 600;
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      transition: background 160ms ease, transform 160ms ease;
+    }
+
+    .cta-button:hover,
+    .cta-button:focus {
+      background: rgba(37, 99, 235, 0.22);
+      transform: translateY(-1px);
+    }
+
+    .cta-button svg {
+      width: 18px;
+      height: 18px;
+    }
+
+    .refresh-button {
+      background: transparent;
+      border: 1px solid rgba(17, 24, 39, 0.2);
+      border-radius: 999px;
+      padding: 8px 18px;
+      font-size: 0.9rem;
+      cursor: pointer;
+      transition: background 160ms ease;
+    }
+
+    .refresh-button:hover,
+    .refresh-button:focus {
+      background: rgba(15, 23, 42, 0.06);
+    }
+
+    ul {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .issue {
+      border-radius: 16px;
+      border: 1px solid rgba(148, 163, 184, 0.35);
+      padding: clamp(16px, 4vw, 20px);
+      background: rgba(255, 255, 255, 0.85);
+      display: grid;
+      gap: 10px;
+      transition: border-color 160ms ease, transform 160ms ease;
+    }
+
+    .issue:hover {
+      border-color: rgba(37, 99, 235, 0.4);
+      transform: translateY(-1px);
+    }
+
+    .issue-title {
+      font-size: 1.05rem;
+      margin: 0;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .issue-title a {
+      color: inherit;
+      text-decoration: none;
+    }
+
+    .issue-title a:hover,
+    .issue-title a:focus {
+      text-decoration: underline;
+    }
+
+    .issue-meta {
+      font-size: 0.85rem;
+      color: var(--text-muted);
+    }
+
+    .issue-body {
+      font-size: 0.95rem;
+      line-height: 1.55;
+      color: #1f2937;
+      white-space: pre-wrap;
+      word-break: break-word;
+      margin: 0;
+    }
+
+    .labels {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+
+    .label {
+      font-size: 0.75rem;
+      padding: 4px 10px;
+      border-radius: 999px;
+      background: rgba(15, 23, 42, 0.08);
+      color: #0f172a;
+    }
+
+    .status {
+      font-size: 0.95rem;
+      text-align: center;
+      color: var(--text-muted);
+    }
+
+    .error {
+      color: #dc2626;
+    }
+
+    @media (max-width: 640px) {
+      body {
+        padding: 16px;
+      }
+      .issue {
+        padding: 14px;
+      }
+      .actions {
+        flex-direction: column;
+        align-items: stretch;
+      }
+      .cta-button,
+      .refresh-button {
+        justify-content: center;
+        width: 100%;
+      }
+      .cta-button svg {
+        display: none;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <section class="card" aria-labelledby="title">
+      <header>
+        <h1 id="title">GitHub Issues 掲示板ログ</h1>
+        <p>「<code>samorikawa31018/my-first-code</code>」リポジトリの Issues を掲示板の投稿として表示しています。新規投稿は GitHub の Issue 作成画面から行ってください。</p>
+        <div class="actions">
+          <a class="cta-button" href="https://github.com/samorikawa31018/my-first-code/issues/new" target="_blank" rel="noopener">
+            <svg aria-hidden="true" focusable="false" viewBox="0 0 24 24">
+              <path fill="currentColor" d="M12 5a1 1 0 0 1 1 1v5h5a1 1 0 1 1 0 2h-5v5a1 1 0 1 1-2 0v-5H6a1 1 0 1 1 0-2h5V6a1 1 0 0 1 1-1z"/>
+            </svg>
+            Issue を投稿
+          </a>
+          <button class="refresh-button" type="button" id="refreshButton">最新の投稿を再読み込み</button>
+        </div>
+      </header>
+    </section>
+
+    <section class="card" aria-live="polite">
+      <div id="status" class="status">投稿を読み込んでいます…</div>
+      <ul id="issues"></ul>
+    </section>
+
+    <section class="card">
+      <h2 style="margin-top:0;font-size:1.1rem;">ご利用上の注意</h2>
+      <ul style="gap:8px;">
+        <li class="issue-meta">閲覧のみであれば GitHub アカウントは不要です。投稿には GitHub アカウントでのサインインが必要です。</li>
+        <li class="issue-meta">投稿内容は公開リポジトリに保存されるため、個人情報の掲載は避けてください。</li>
+        <li class="issue-meta">GitHub API の制限により、短時間で多数アクセスすると読み込みに失敗することがあります。その場合は時間を置いて再読み込みしてください。</li>
+        <li class="issue-meta">Google Sites などの iframe で埋め込む際は、ページ幅を広めに確保すると読みやすく表示できます。</li>
+      </ul>
+    </section>
+  </main>
+
+  <script>
+    (function () {
+      const repoOwner = "samorikawa31018";
+      const repoName = "my-first-code";
+      const issuesUrl = `https://api.github.com/repos/${repoOwner}/${repoName}/issues?state=open&per_page=20`;
+      const issuesList = document.getElementById("issues");
+      const statusEl = document.getElementById("status");
+      const refreshButton = document.getElementById("refreshButton");
+
+      async function fetchIssues() {
+        statusEl.textContent = "投稿を読み込んでいます…";
+        issuesList.innerHTML = "";
+
+        try {
+          const response = await fetch(issuesUrl, {
+            headers: {
+              "Accept": "application/vnd.github+json"
+            }
+          });
+
+          if (!response.ok) {
+            throw new Error(`GitHub API Error: ${response.status}`);
+          }
+
+          const data = await response.json();
+          const issues = data.filter(item => !item.pull_request);
+
+          if (!issues.length) {
+            statusEl.textContent = "まだ投稿はありません。最初のメッセージを Issue で投稿してみましょう。";
+            return;
+          }
+
+          statusEl.textContent = `最新 ${issues.length} 件の投稿を表示しています。`;
+          issues.forEach(issue => {
+            issuesList.appendChild(renderIssue(issue));
+          });
+        } catch (error) {
+          console.error(error);
+          statusEl.innerHTML = `<span class="error">読み込みに失敗しました。時間を置いてから再度お試しください。</span>`;
+        }
+      }
+
+      function renderIssue(issue) {
+        const container = document.createElement("li");
+        container.className = "issue";
+
+        const title = document.createElement("h3");
+        title.className = "issue-title";
+
+        const link = document.createElement("a");
+        link.href = issue.html_url;
+        link.target = "_blank";
+        link.rel = "noopener";
+        link.textContent = `#${issue.number} ${issue.title}`;
+        title.appendChild(link);
+
+        const meta = document.createElement("p");
+        meta.className = "issue-meta";
+        const createdAt = new Date(issue.created_at);
+        const updatedAt = new Date(issue.updated_at);
+        meta.textContent = [
+          `投稿者: ${issue.user?.login ?? "unknown"}`,
+          `作成: ${formatDate(createdAt)}`,
+          issue.comments ? `コメント数: ${issue.comments}` : null,
+          createdAt.getTime() !== updatedAt.getTime() ? `更新: ${formatRelative(updatedAt)}` : null
+        ].filter(Boolean).join(" ／ ");
+
+        const body = document.createElement("p");
+        body.className = "issue-body";
+        body.textContent = issue.body ? truncate(issue.body, 500) : "本文の記載はありません。";
+
+        container.appendChild(title);
+        container.appendChild(meta);
+
+        if (issue.labels?.length) {
+          const labelsWrapper = document.createElement("div");
+          labelsWrapper.className = "labels";
+          issue.labels.forEach(label => {
+            const badge = document.createElement("span");
+            badge.className = "label";
+            badge.style.background = label.color ? `#${label.color}22` : badge.style.background;
+            badge.style.color = label.color ? `#${label.color}` : badge.style.color;
+            badge.textContent = label.name;
+            labelsWrapper.appendChild(badge);
+          });
+          container.appendChild(labelsWrapper);
+        }
+
+        container.appendChild(body);
+
+        return container;
+      }
+
+      function truncate(text, maxLength) {
+        if (!text) return "";
+        return text.length > maxLength ? `${text.slice(0, maxLength)}…` : text;
+      }
+
+      function formatDate(date) {
+        return new Intl.DateTimeFormat("ja-JP", {
+          year: "numeric",
+          month: "short",
+          day: "numeric",
+          hour: "2-digit",
+          minute: "2-digit"
+        }).format(date);
+      }
+
+      function formatRelative(date) {
+        const diff = Date.now() - date.getTime();
+        const minutes = Math.round(diff / 60000);
+
+        if (minutes < 1) return "たった今";
+        if (minutes < 60) return `${minutes}分前`;
+        const hours = Math.round(minutes / 60);
+        if (hours < 24) return `${hours}時間前`;
+        const days = Math.round(hours / 24);
+        if (days < 7) return `${days}日前`;
+        const weeks = Math.round(days / 7);
+        if (weeks < 5) return `${weeks}週間前`;
+        const months = Math.round(days / 30);
+        if (months < 12) return `${months}か月前`;
+        const years = Math.round(days / 365);
+        return `${years}年前`;
+      }
+
+      refreshButton.addEventListener("click", () => {
+        fetchIssues();
+      });
+
+      fetchIssues();
+    })();
+  </script>
+</body>
+</html>
